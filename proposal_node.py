@@ -12,8 +12,7 @@ from __future__ import annotations
 import json
 import re
 
-from google import genai
-from google.genai import types
+import anthropic
 
 import display
 from display import print_proposals
@@ -113,7 +112,7 @@ async def _present(
     project_goal: ProjectGoal,
     understanding: ProjectUnderstanding,
 ) -> tuple[str, list[Proposal]]:
-    """Initial Gemini call to select and present 1–3 proposals."""
+    """Initial Claude call to select and present 1–3 proposals."""
     opportunities_json = json.dumps(
         [o.model_dump() for o in opportunities], indent=2
     )
@@ -123,13 +122,14 @@ async def _present(
         understanding_json=understanding.model_dump_json(indent=2),
     )
 
-    client = genai.Client()
-    response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[types.Content(role="user", parts=[types.Part(text=prompt)])],
-        config=types.GenerateContentConfig(system_instruction=PROPOSAL_SYSTEM_PROMPT),
+    client = anthropic.AsyncAnthropic()
+    response = await client.messages.create(
+        model="claude-haiku-4-5",
+        max_tokens=8096,
+        system=PROPOSAL_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": prompt}],
     )
-    text = (response.text or "").strip()
+    text = next((b.text for b in response.content if b.type == "text"), "").strip()
 
     return _split_response(text, fallback_proposals=[])
 
@@ -149,13 +149,14 @@ async def _refine(
         conversation=conversation_str,
     )
 
-    client = genai.Client()
-    response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[types.Content(role="user", parts=[types.Part(text=prompt)])],
-        config=types.GenerateContentConfig(system_instruction=PROPOSAL_SYSTEM_PROMPT),
+    client = anthropic.AsyncAnthropic()
+    response = await client.messages.create(
+        model="claude-haiku-4-5",
+        max_tokens=8096,
+        system=PROPOSAL_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": prompt}],
     )
-    text = (response.text or "").strip()
+    text = next((b.text for b in response.content if b.type == "text"), "").strip()
 
     return _split_response(text, fallback_proposals=proposals)
 
@@ -165,7 +166,7 @@ def _split_response(
     fallback_proposals: list[Proposal],
 ) -> tuple[str, list[Proposal]]:
     """
-    Split Gemini response into (presentation_text, list[Proposal]).
+    Split Claude response into (presentation_text, list[Proposal]).
 
     The response format is:
         <presentation text>

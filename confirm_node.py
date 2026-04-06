@@ -6,14 +6,13 @@ Loop:
     1. Print the current ~100-word user_summary.
     2. Read developer input.
     3. If input is "approve" (case-insensitive) → mark approved and exit.
-    4. Otherwise → call Gemini to enhance the internal ProjectUnderstanding
+    4. Otherwise → call Claude to enhance the internal ProjectUnderstanding
        using the conversation history, extract the new summary, and loop back.
 """
 
 from __future__ import annotations
 
-from google import genai
-from google.genai import types
+import anthropic
 
 import display
 from models import Gap, Module, ProjectUnderstanding
@@ -82,13 +81,14 @@ async def _enhance(
         conversation=conversation_str,
     )
 
-    client = genai.Client()
-    response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[types.Content(role="user", parts=[types.Part(text=prompt)])],
-        config=types.GenerateContentConfig(system_instruction=ENHANCE_SYSTEM_PROMPT),
+    client = anthropic.AsyncAnthropic()
+    response = await client.messages.create(
+        model="claude-haiku-4-5",
+        max_tokens=8096,
+        system=ENHANCE_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": prompt}],
     )
-    text = (response.text or "").strip()
+    text = next((b.text for b in response.content if b.type == "text"), "").strip()
 
     # Split: summary is everything before the ```json block
     json_start = text.find("```json")

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal, Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -44,3 +46,22 @@ class ProjectUnderstanding(BaseModel):
     recent_focus: str = ""
     notable_observations: list[str] = Field(default_factory=list)
     raw_summary: str = ""
+
+
+class Contract(BaseModel):
+    contract_id: str
+    type: Literal["RUNNABLE", "STRUCTURAL", "BEHAVIORAL"]
+    description: str                         # 自然語言：驗證什麼
+    command: str                             # Verify 直接 shell 執行
+    expected_exit_code: int = 0
+    expected_output: Optional[str] = None   # None = 只 check exit code
+    match_mode: Literal["contains", "regex", "exact"] = "contains"
+
+
+class Task(BaseModel):
+    task_id: str
+    description: str                         # 自然語言：做什麼、為什麼
+    contract_ids: list[str]                  # 指向對應的 Contract
+    is_milestone: bool = False               # TP 決定，Verify pass 後觸發 milestone check
+    retry_count: int = 0                     # Error Handling 每次 +1
+    max_retries: int = 3

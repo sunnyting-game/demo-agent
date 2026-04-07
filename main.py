@@ -98,6 +98,15 @@ def _save_log(session_id: str, project_path: str, state: dict) -> None:
                 lines.append(f"- **{m.name}** `{m.status}` — {m.description}")
             lines.append("")
 
+        if understanding.recent_focus:
+            lines += [f"**Recent Focus:** {understanding.recent_focus}", ""]
+
+        if understanding.gaps:
+            lines += ["**Gaps:**", ""]
+            for g in understanding.gaps:
+                lines.append(f"- `{g.type}` @ {g.location} — {g.description}")
+            lines.append("")
+
         if understanding.notable_observations:
             lines += ["**Notable Observations:**", ""]
             for obs in understanding.notable_observations:

@@ -43,8 +43,6 @@ async def main() -> None:
             "project_path": project_path,
             "project_understanding": None,
             "user_summary": "",
-            "approved": False,
-            "conversation_history": [],
             "opportunities": None,
         }
     )
@@ -158,9 +156,9 @@ def _save_log(session_id: str, project_path: str, state: dict) -> None:
 
     lines += ["---", ""]
 
-    # ── Approved Proposals ────────────────────────────────────────────────
+    # ── Proposals ─────────────────────────────────────────────────────────
     proposals = state.get("proposals") or []
-    lines += ["## Approved Proposals", ""]
+    lines += ["## Proposals", ""]
     if proposals:
         for i, p in enumerate(proposals, 1):
             lines += [
@@ -172,7 +170,7 @@ def _save_log(session_id: str, project_path: str, state: dict) -> None:
                 "",
             ]
     else:
-        lines += ["*(none approved)*", ""]
+        lines += ["*(none)*", ""]
 
     log_path.write_text("\n".join(lines), encoding="utf-8")
 

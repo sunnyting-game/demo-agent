@@ -3,9 +3,7 @@ LangGraph agent definition.
 
 Graph layout:
 
-    [START] ──► scan ──► confirm ──► (approved?) ──► goal ──► opportunities ──► proposal ──► (approved?) ──► [END]
-                                         │                                            │
-                                         └──(not approved)──► confirm  (loop)        └──(not approved)──► proposal  (loop)
+    [START] ──► scan ──► goal ──► opportunities ──► proposal ──► [END]
 """
 
 from __future__ import annotations
@@ -15,7 +13,6 @@ from typing import Literal, Optional
 from langgraph.graph import END, StateGraph
 from typing_extensions import TypedDict
 
-from confirm_node import confirm_node
 from goal_node import goal_node
 from models import Contract, Opportunity, Proposal, ProjectGoal, ProjectUnderstanding, Task
 from opportunities_node import opportunities_node
@@ -30,18 +27,12 @@ from scan_node import scan_node
 class AgentState(TypedDict):
 
     # ── Existing Fields（現有 nodes 使用）──────────────────────────────
-    project_path                 : str
-    project_understanding        : Optional[ProjectUnderstanding]
-    user_summary                 : str
-    project_goal                 : Optional[ProjectGoal]
-    opportunities                : Optional[list[Opportunity]]
-    proposals                    : Optional[list[Proposal]]
-    conversation_history         : list[dict]
-    proposal_conversation_history: list[dict]
-
-    # TODO: remove after confirm/proposal node refactor
-    approved          : bool
-    proposals_approved: bool
+    project_path         : str
+    project_understanding: Optional[ProjectUnderstanding]
+    user_summary         : str
+    project_goal         : Optional[ProjectGoal]
+    opportunities        : Optional[list[Opportunity]]
+    proposals            : Optional[list[Proposal]]
 
     # ── Routing Fields（conditional edges 讀這些，node 完成後 reset 為 None）──
     pm_decision      : Optional[Literal["approved", "rejected"]]
@@ -79,28 +70,18 @@ class AgentState(TypedDict):
 # Graph
 # ──────────────────────────────────────────────
 
-def _route_confirm(state: AgentState) -> str:
-    return "goal" if state["approved"] else "confirm"
-
-
-def _route_proposals(state: AgentState) -> str:
-    return END if state["proposals_approved"] else "proposal"
-
-
 def build_agent():
     graph: StateGraph = StateGraph(AgentState)
 
     graph.add_node("scan", scan_node)
-    graph.add_node("confirm", confirm_node)
     graph.add_node("goal", goal_node)
     graph.add_node("opportunities", opportunities_node)
     graph.add_node("proposal", proposal_node)
 
     graph.set_entry_point("scan")
-    graph.add_edge("scan", "confirm")
-    graph.add_conditional_edges("confirm", _route_confirm)
+    graph.add_edge("scan", "goal")
     graph.add_edge("goal", "opportunities")
     graph.add_edge("opportunities", "proposal")
-    graph.add_conditional_edges("proposal", _route_proposals)
+    graph.add_edge("proposal", END)
 
     return graph.compile()

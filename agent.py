@@ -14,7 +14,7 @@ from langgraph.graph import END, StateGraph
 from typing_extensions import TypedDict
 
 from goal_node import goal_node
-from models import Contract, Opportunity, Proposal, ProjectGoal, ProjectUnderstanding, Task
+from models import Contract, Opportunity, PMDecision, Proposal, ProjectGoal, ProjectUnderstanding, Task
 from opportunities_node import opportunities_node
 from proposal_node import proposal_node
 from scan_node import scan_node
@@ -59,7 +59,7 @@ class AgentState(TypedDict):
     pm_replan_count     : int               # 防 PM ↔ Opportunity 無限 loop
 
     # ── Node Artifacts（建 node 時逐步加入）──────────────────────────
-    # pm_decision_detail : PMDecision        ← 建 PM node 時加
+    pm_decision_detail   : Optional[PMDecision]               # PM node artifact
     # wcd                : WorkingContextDoc ← 建 CE node 時加
     # change_manifest    : ChangeManifest    ← 建 Explore node 時加
     # execution_log      : ExecutionLog      ← 建 Implement node 時加

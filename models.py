@@ -48,6 +48,79 @@ class ProjectUnderstanding(BaseModel):
     raw_summary: str = ""
 
 
+# ── PM Node ───────────────────────────────────────────────────────────────────
+
+class JudgmentEntry(BaseModel):
+    stage: Literal[
+        "goal_alignment",
+        "feasibility",
+        "assumption_verification",
+        "selection",
+        "self_critique",
+    ]
+    target_proposal_title: str
+    finding: str
+    verdict: Literal["pass", "fail", "uncertain"]
+    evidence: Optional[str]
+
+
+class VerifiedAssumption(BaseModel):
+    claim: str
+    risk_level: Literal["high", "medium", "low"]
+    verdict: Literal["confirmed", "refuted", "partial"]
+    evidence_path: str
+    evidence_snippet: str
+
+
+class UnverifiedAssumption(BaseModel):
+    claim: str
+    risk_level: Literal["high", "medium", "low"]
+
+
+class FailureRisk(BaseModel):
+    failure_mode: str
+    investigation_question: str
+
+
+class FeasibilityAnalysis(BaseModel):
+    dependency_concerns: list[str]
+    underestimation_signals: list[str]
+    design_conflicts: list[str]
+
+
+class CEHandoff(BaseModel):
+    chosen_proposal: Proposal
+    aligned_success_criterion: list[str]
+    verified_assumptions: list[VerifiedAssumption]
+    unverified_assumptions: list[UnverifiedAssumption]
+    failure_risks: list[FailureRisk]
+    feasibility_analysis: FeasibilityAnalysis
+    feasibility_confidence: Literal["high", "medium", "low"]
+
+
+class RejectionGuidance(BaseModel):
+    reason: str
+    target: Literal["opportunity", "proposal"]
+    guidance: str
+    iteration: int
+
+
+class PMReport(BaseModel):
+    total_iterations: int
+    attempted_directions: list[str]
+    conclusion: Literal["project_sufficient", "needs_user_guidance"]
+
+
+class PMDecision(BaseModel):
+    judgment_log: list[JudgmentEntry]
+
+    ce_handoff: Optional[CEHandoff]        = None  # Approve path
+    rejection:  Optional[RejectionGuidance] = None  # Reject path
+    pm_report:  Optional[PMReport]         = None  # Max rejection path
+
+
+# ── Task / Contract ────────────────────────────────────────────────────────────
+
 class Contract(BaseModel):
     contract_id: str
     type: Literal["RUNNABLE", "STRUCTURAL", "BEHAVIORAL"]

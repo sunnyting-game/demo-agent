@@ -92,12 +92,13 @@ async def _present(
     )
     text = next((b.text for b in response.content if b.type == "text"), "").strip()
 
-    return _split_response(text, fallback_proposals=[])
+    return _split_response(text, opportunities=opportunities, fallback_proposals=[])
 
 
 
 def _split_response(
     text: str,
+    opportunities: list[Opportunity],
     fallback_proposals: list[Proposal],
 ) -> tuple[str, list[Proposal]]:
     """
@@ -107,7 +108,8 @@ def _split_response(
         <presentation text>
 
         ```json
-        [{"title": ..., "what": ..., "approach": ..., "effort": ...}, ...]
+        [{"title": ..., "what": ..., "approach": ..., "effort": ...,
+          "source_opportunity_title": ...}, ...]
         ```
     """
     json_start = text.find("```json")
@@ -121,8 +123,23 @@ def _split_response(
     data = _extract_json_array(json_text)
     if data:
         try:
-            proposals = [Proposal(**item) for item in data]
-            return presentation_text, proposals
+            opp_map = {o.title: o for o in opportunities}
+            proposals: list[Proposal] = []
+            for item in data:
+                opp_title = item.get("source_opportunity_title", "")
+                source = opp_map.get(opp_title)
+                if source is None:
+                    print(f"[proposal_node] warning: no matching opportunity for '{opp_title}', skipping")
+                    continue
+                proposals.append(Proposal(
+                    title=item["title"],
+                    what=item["what"],
+                    approach=item["approach"],
+                    effort=item["effort"],
+                    source_opportunity=source,
+                ))
+            if proposals:
+                return presentation_text, proposals
         except Exception:  # noqa: BLE001
             pass
 

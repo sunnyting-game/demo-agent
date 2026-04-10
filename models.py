@@ -26,9 +26,10 @@ class Opportunity(BaseModel):
 
 class Proposal(BaseModel):
     title: str
-    what: str      # 1-2 sentence description
-    approach: str  # how the agent would execute it using available tools
-    effort: str    # "quick win" | "medium" | "larger task"
+    what: str                          # 1-2 sentence description
+    approach: str                      # how the agent would execute it using available tools
+    effort: str                        # "quick win" | "medium" | "larger task"
+    source_opportunity: "Opportunity"  # the opportunity this proposal advances
 
 
 class ProjectGoal(BaseModel):
@@ -52,16 +53,17 @@ class ProjectUnderstanding(BaseModel):
 
 class JudgmentEntry(BaseModel):
     stage: Literal[
-        "goal_alignment",
+        "value_judgment",
         "feasibility",
         "assumption_verification",
         "selection",
         "self_critique",
     ]
     target_proposal_title: str
-    finding: str
     verdict: Literal["pass", "fail", "uncertain"]
+    finding: str
     evidence: Optional[str]
+    reasoning: dict = Field(default_factory=dict)  # stage-specific CoT fields (debug)
 
 
 class VerifiedAssumption(BaseModel):
@@ -75,6 +77,12 @@ class VerifiedAssumption(BaseModel):
 class UnverifiedAssumption(BaseModel):
     claim: str
     risk_level: Literal["high", "medium", "low"]
+
+
+class ExtractedAssumption(BaseModel):
+    claim: str
+    risk_level: Literal["high", "medium", "low"]
+    blocking_reason: str  # which step in the approach breaks if this is false
 
 
 class FailureRisk(BaseModel):

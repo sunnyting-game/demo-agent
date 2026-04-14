@@ -2,15 +2,14 @@
 Goal node — infers the real-world purpose and success criteria of the project
 from the post-confirmation project understanding.
 
-Single-turn Gemini call (no tool loop).
+Single-turn Claude call (no tool loop).
 Output is printed for user transparency, then parsed into a structured
 ProjectGoal object for the opportunities node to consume.
 """
 
 from __future__ import annotations
 
-from google import genai
-from google.genai import types
+import anthropic
 
 import display
 from display import print_goal
@@ -38,14 +37,15 @@ async def goal_node(state: dict) -> dict:
         understanding_json=understanding.model_dump_json(indent=2),
     )
 
-    client = genai.Client()
+    client = anthropic.AsyncAnthropic()
     with display.thinking("Identifying project goal..."):
-        response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[types.Content(role="user", parts=[types.Part(text=prompt)])],
-            config=types.GenerateContentConfig(system_instruction=GOAL_SYSTEM_PROMPT),
+        response = await client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=8096,
+            system=GOAL_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
         )
-    raw_text = (response.text or "").strip()
+    raw_text = next((b.text for b in response.content if b.type == "text"), "").strip()
 
     project_goal = _parse_goal(raw_text)
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal, Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -24,9 +26,10 @@ class Opportunity(BaseModel):
 
 class Proposal(BaseModel):
     title: str
-    what: str      # 1-2 sentence description
-    approach: str  # how the agent would execute it using available tools
-    effort: str    # "quick win" | "medium" | "larger task"
+    what: str                          # 1-2 sentence description
+    approach: str                      # how the agent would execute it using available tools
+    effort: str                        # "quick win" | "medium" | "larger task"
+    source_opportunity: "Opportunity"  # the opportunity this proposal advances
 
 
 class ProjectGoal(BaseModel):
@@ -44,3 +47,102 @@ class ProjectUnderstanding(BaseModel):
     recent_focus: str = ""
     notable_observations: list[str] = Field(default_factory=list)
     raw_summary: str = ""
+
+
+# ── PM Node ───────────────────────────────────────────────────────────────────
+
+class JudgmentEntry(BaseModel):
+    stage: Literal[
+        "value_judgment",
+        "feasibility",
+        "assumption_verification",
+        "selection",
+        "self_critique",
+    ]
+    target_proposal_title: str
+    verdict: Literal["pass", "fail", "uncertain"]
+    finding: str
+    evidence: Optional[str]
+    reasoning: dict = Field(default_factory=dict)  # stage-specific CoT fields (debug)
+
+
+class VerifiedAssumption(BaseModel):
+    claim: str
+    risk_level: Literal["high", "medium", "low"]
+    verdict: Literal["confirmed", "refuted", "partial"]
+    evidence_path: str
+    evidence_snippet: str
+
+
+class UnverifiedAssumption(BaseModel):
+    claim: str
+    risk_level: Literal["high", "medium", "low"]
+
+
+class ExtractedAssumption(BaseModel):
+    claim: str
+    risk_level: Literal["high", "medium", "low"]
+    blocking_reason: str  # which step in the approach breaks if this is false
+
+
+class FailureRisk(BaseModel):
+    failure_mode: str
+    investigation_question: str
+
+
+class FeasibilityAnalysis(BaseModel):
+    dependency_concerns: list[str]
+    underestimation_signals: list[str]
+    design_conflicts: list[str]
+
+
+class CEHandoff(BaseModel):
+    chosen_proposal: Proposal
+    aligned_success_criterion: list[str]
+    verified_assumptions: list[VerifiedAssumption]
+    unverified_assumptions: list[UnverifiedAssumption]
+    failure_risks: list[FailureRisk]
+    feasibility_analysis: FeasibilityAnalysis
+    feasibility_confidence: Literal["high", "medium", "low"]
+
+
+class RejectionGuidance(BaseModel):
+    reason: str
+    target: Literal["opportunity", "proposal"]
+    guidance: str
+    iteration: int
+
+
+class PMReport(BaseModel):
+    total_iterations: int
+    attempted_directions: list[str]
+    conclusion: Literal["project_sufficient", "needs_user_guidance"]
+
+
+class PMDecision(BaseModel):
+    judgment_log: list[JudgmentEntry]
+
+    ce_handoff: Optional[CEHandoff]        = None  # Approve path
+    rejection:  Optional[RejectionGuidance] = None  # Reject path
+    pm_report:  Optional[PMReport]         = None  # Max rejection path
+
+
+# ── Task / Contract ────────────────────────────────────────────────────────────
+
+class Contract(BaseModel):
+    contract_id: str
+    type: Literal["RUNNABLE", "STRUCTURAL", "BEHAVIORAL"]
+    description: str                         # 自然語言：驗證什麼
+    command: str                             # Verify 直接 shell 執行
+    expected_exit_code: int = 0
+    expected_output: Optional[str] = None   # None = 只 check exit code
+    match_mode: Literal["contains", "regex", "exact"] = "contains"
+
+
+class Task(BaseModel):
+    task_id: str
+    description: str                         # 自然語言：做什麼、為什麼
+    contract_ids: list[str]                  # 指向對應的 Contract
+    is_milestone: bool = False               # TP 決定，Verify pass 後觸發 milestone check
+    retry_count: int = 0                     # Error Handling 每次 +1
+    max_retries: int = 3

@@ -1,10 +1,10 @@
 """
-Scan node — workspace assistant agentic loop, powered by Gemini 2.5 Flash.
+Scan node — workspace assistant agentic loop, powered by Claude (claude-haiku-4-5).
 
 Loop:
     1. Send the project-analysis prompt with tool declarations.
-    2. While Gemini returns function calls, execute them and feed results back.
-    3. When Gemini stops calling tools, parse the final text into a
+    2. While Claude returns tool_use blocks, execute them and feed results back.
+    3. When Claude stops calling tools, parse the final text into a
        ProjectUnderstanding and return it via the LangGraph state.
 """
 
@@ -13,8 +13,7 @@ from __future__ import annotations
 import json
 import re
 
-from google import genai
-from google.genai import types
+import anthropic
 
 from models import Gap, Module, ProjectUnderstanding
 from prompts import (
@@ -24,31 +23,6 @@ from prompts import (
     USER_PROMPT_TEMPLATE,
 )
 from tools import ALL_TOOLS, dispatch_tool
-
-
-# ──────────────────────────────────────────────
-# Build Gemini tool declarations once at import time
-# ALL_TOOLS is a list of Anthropic-style dicts; Gemini accepts the same
-# JSON-Schema dict for `parameters`, so we just rewrap them.
-# ──────────────────────────────────────────────
-
-_GEMINI_TOOLS = [
-    types.Tool(
-        function_declarations=[
-            types.FunctionDeclaration(
-                name=t["name"],
-                description=t["description"],
-                parameters=t["input_schema"],
-            )
-            for t in ALL_TOOLS
-        ]
-    )
-]
-
-_GEMINI_CONFIG = types.GenerateContentConfig(
-    system_instruction=SCAN_SYSTEM_PROMPT,
-    tools=_GEMINI_TOOLS,
-)
 
 
 # ──────────────────────────────────────────────
@@ -64,65 +38,72 @@ async def scan_node(state: dict) -> dict:
     """
     project_path: str = state["project_path"]
 
-    contents: list[types.Content] = [
-        types.Content(
-            role="user",
-            parts=[types.Part(text=USER_PROMPT_TEMPLATE.format(project_path=project_path))],
-        )
+    messages: list[dict] = [
+        {
+            "role": "user",
+            "content": USER_PROMPT_TEMPLATE.format(project_path=project_path),
+        }
     ]
 
-    client = genai.Client()
+    client = anthropic.AsyncAnthropic()
     response = None
 
     # ── Agentic loop ───────────────────────────────────────────────────────
     _MAX_ITERATIONS = 15
     for _iteration in range(_MAX_ITERATIONS):
-        response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=contents,
-            config=_GEMINI_CONFIG,
+        response = await client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=8096,
+            system=SCAN_SYSTEM_PROMPT,
+            tools=ALL_TOOLS,
+            messages=messages,
         )
 
-        # response.function_calls is [] when Gemini is done
-        fn_calls = response.function_calls or []
-        if not fn_calls:
-            break  # Natural stopping point — no more tool requests
+        # Natural stopping point — Claude is done
+        if response.stop_reason == "end_turn":
+            break
 
-        # Append the assistant turn (includes the function_call parts)
-        contents.append(response.candidates[0].content)
+        # Extract tool_use blocks
+        tool_uses = [b for b in response.content if b.type == "tool_use"]
+        if not tool_uses:
+            break  # No tool calls, Claude finished
 
-        # Execute every requested tool and collect function responses
-        fn_response_parts: list[types.Part] = []
-        for fc in fn_calls:
-            result = dispatch_tool(fc.name, dict(fc.args), project_path)
-            fn_response_parts.append(
-                types.Part(
-                    function_response=types.FunctionResponse(
-                        name=fc.name,
-                        response={"result": result},
-                    )
-                )
+        # Append the assistant turn (includes tool_use blocks)
+        messages.append({"role": "assistant", "content": response.content})
+
+        # Execute every requested tool and collect tool_result blocks
+        tool_results: list[dict] = []
+        for tu in tool_uses:
+            result = dispatch_tool(tu.name, tu.input, project_path)
+            tool_results.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": tu.id,
+                    "content": result,
+                }
             )
 
         # Feed all results back in a single user turn
-        contents.append(types.Content(role="user", parts=fn_response_parts))
+        messages.append({"role": "user", "content": tool_results})
     else:
-        # Hit iteration cap — ask Gemini to wrap up with what it has
-        contents.append(
-            types.Content(
-                role="user",
-                parts=[types.Part(text="You have reached the exploration limit. Output your ProjectUnderstanding JSON now based on what you have explored so far.")],
-            )
+        # Hit iteration cap — ask Claude to wrap up with what it has
+        messages.append(
+            {
+                "role": "user",
+                "content": "You have reached the exploration limit. Output your ProjectUnderstanding JSON now based on what you have explored so far.",
+            }
         )
-        response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=contents,
-            config=_GEMINI_CONFIG,
+        response = await client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=8096,
+            system=SCAN_SYSTEM_PROMPT,
+            tools=ALL_TOOLS,
+            messages=messages,
         )
 
     # ── Parse final response ───────────────────────────────────────────────
     assert response is not None
-    final_text = response.text or ""
+    final_text = next((b.text for b in response.content if b.type == "text"), "")
     project_understanding = _parse_project_context(final_text, project_path)
 
     user_summary = await _generate_summary(project_understanding, client)
@@ -140,16 +121,20 @@ async def scan_node(state: dict) -> dict:
 # Helpers
 # ──────────────────────────────────────────────
 
-async def _generate_summary(understanding: ProjectUnderstanding, client: genai.Client) -> str:
+async def _generate_summary(
+    understanding: ProjectUnderstanding,
+    client: anthropic.AsyncAnthropic,
+) -> str:
     prompt = SUMMARIZE_USER_PROMPT_TEMPLATE.format(
         understanding_json=understanding.model_dump_json(indent=2),
     )
-    response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[types.Content(role="user", parts=[types.Part(text=prompt)])],
-        config=types.GenerateContentConfig(system_instruction=SUMMARIZE_SYSTEM_PROMPT),
+    response = await client.messages.create(
+        model="claude-haiku-4-5",
+        max_tokens=8096,
+        system=SUMMARIZE_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": prompt}],
     )
-    return (response.text or "").strip()
+    return next((b.text for b in response.content if b.type == "text"), "").strip()
 
 
 def _parse_project_context(text: str, project_path: str) -> ProjectUnderstanding:

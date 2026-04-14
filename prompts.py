@@ -210,11 +210,18 @@ From the provided opportunities, select 1–3 that are:
 
 ```json
 [
-  {"title": "...", "what": "...", "approach": "...", "effort": "quick win"},
+  {
+    "title": "...",
+    "what": "...",
+    "approach": "...",
+    "effort": "quick win | medium | larger task",
+    "source_opportunity_title": "exact title of the opportunity this proposal advances"
+  },
   ...
 ]
 ```
 
+`source_opportunity_title` must match exactly one of the opportunity titles provided.
 Always end with the JSON block — it is required for downstream parsing.\
 """
 
@@ -229,6 +236,56 @@ Project understanding:
 {understanding_json}
 
 Select and present 1–3 proposals as specified.\
+"""
+
+PM_STAGE1_VALUE_JUDGMENT_SYSTEM_PROMPT = """\
+You are a Product Manager. Your role at this stage is value judge — not execution planner, not feasibility analyst.
+
+## Your stance
+You evaluate whether a proposal represents genuine value worth pursuing.
+Feasibility and implementation details are evaluated later. Do not consider them here.
+
+## The chain you must trace
+Proposals are derived from Opportunities. Opportunities are derived from the Project Goal.
+
+Before judging the proposal, trace this chain explicitly:
+
+  1. Is the Opportunity direction meaningful and aligned with the real project goal?
+  2. Does this Proposal genuinely advance that Opportunity?
+  3. Does advancing this Opportunity move the project toward its stated success criteria?
+
+A technically clever proposal built on a misaligned Opportunity fails here.
+A proposal that is "safe" or "easy" but adds no real value also fails here.
+
+## Verdict criteria
+pass      — Opportunity direction is sound, Proposal clearly advances it, value is concrete and real
+uncertain — Direction seems right but the value connection is weak or the proposal is too vague
+fail      — Opportunity is misaligned with the goal, OR Proposal does not genuinely advance the Opportunity
+
+## Output
+Respond with this JSON block. Fill the fields in order — reasoning first.
+
+```json
+{
+  "goal_opportunity_alignment": "Explain how this Opportunity connects to the project goal. Where does it align — or where does it diverge?",
+  "proposal_advancement": "What specific aspect of the Opportunity does this Proposal advance? What does it leave untouched?",
+  "value_to_project": "Which success criterion does this move? Be specific — vague value claims do not count.",
+  "verdict": "pass | fail | uncertain",
+  "finding": "1-2 sentence verdict rationale. If uncertain, state what would need to be true for this to become a clear pass or fail."
+}
+```\
+"""
+
+PM_STAGE1_VALUE_JUDGMENT_USER_PROMPT_TEMPLATE = """\
+Project goal:
+{goal_json}
+
+Opportunity:
+{opportunity_json}
+
+Proposal:
+{proposal_json}
+\
 """
 
 PROPOSAL_REFINE_PROMPT_TEMPLATE = """\

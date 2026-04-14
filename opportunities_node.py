@@ -2,7 +2,7 @@
 Opportunities node — identifies 5 high-value opportunities from the
 post-confirmation project understanding.
 
-Single-turn Gemini call (no tool loop).
+Single-turn Claude call (no tool loop).
 Output is printed for user transparency, then parsed into structured
 Opportunity objects for the proposal node to consume.
 """
@@ -11,8 +11,7 @@ from __future__ import annotations
 
 import re
 
-from google import genai
-from google.genai import types
+import anthropic
 
 import display
 from display import print_opportunities
@@ -42,14 +41,15 @@ async def opportunities_node(state: dict) -> dict:
         understanding_json=understanding.model_dump_json(indent=2),
     )
 
-    client = genai.Client()
+    client = anthropic.AsyncAnthropic()
     with display.thinking("Finding opportunities..."):
-        response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[types.Content(role="user", parts=[types.Part(text=prompt)])],
-            config=types.GenerateContentConfig(system_instruction=OPPORTUNITIES_SYSTEM_PROMPT),
+        response = await client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=8096,
+            system=OPPORTUNITIES_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
         )
-    raw_text = (response.text or "").strip()
+    raw_text = next((b.text for b in response.content if b.type == "text"), "").strip()
 
     opportunities = _parse_opportunities(raw_text)
 
